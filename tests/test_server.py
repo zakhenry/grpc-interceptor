@@ -113,6 +113,12 @@ class AsyncAbortingInterceptor(AsyncServerInterceptor):
         await context.abort(grpc.StatusCode.ABORTED, self._message)
 
 
+class MetadataInterceptor(ServerInterceptor):
+    def intercept(self, method, request, context, method_name):
+        context.send_initial_metadata((("initial", "foo"),))
+        context.set_trailing_metadata((('trailing', 'bar'),))
+        return method(request, context)
+
 @pytest.mark.parametrize("aio", [False, True])
 def test_call_counts(aio):
     """The counts should be correct."""
@@ -161,6 +167,16 @@ def test_modifying_interceptor(aio):
         special_cases={}, interceptors=[interceptor], aio_server=aio
     ) as client:
         assert client.Execute(DummyRequest(input="test")).output == "TEST"
+
+def test_modifying_interceptor():
+    interceptor = MetadataInterceptor()
+    with dummy_client(
+        special_cases={}, interceptors=[interceptor], aio_server=False
+    ) as client:
+        res, call = client.Execute.with_call(DummyRequest(input="test"))
+
+        assert ("initial", "foo") in call.initial_metadata()
+        assert ("trailing", "bar") in call.trailing_metadata()
 
 
 @pytest.mark.parametrize("aio", [False, True])
